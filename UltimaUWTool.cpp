@@ -99,21 +99,28 @@ bool DumpFileRoutine(GraphicHeader& header, FILE* f, int palette_index, std::str
 
             int offset = 0;
             int outsize = 0;
-            int start_pos = image_size - 1;
+            int pos = 0;
+            int start_pos = image_size;
             int pad = ((width + 3) & ~3) - width;
 
-            imagebuffer = static_cast<uint8_t*>(malloc(imgsize + (pad * height))); // 100kb, should be emore than enough for padding
-            for (int j = start_pos; j >= data_offset; j--)
+            imagebuffer = static_cast<uint8_t*>(malloc(imgsize + (pad * height))); // 100kb, should be more than enough for padding
+            for (int j = start_pos - width; j >= data_offset; j++)
             {
                 imagebuffer[offset++] = filebuffer[j];
+                pos++;
                 outsize++;
-                if (pad != 0 && (((start_pos + 1) - j) % width) == 0)
+                if (pos == width)
                 {
-                    for (int k = 0; k < pad; k++)
+                    if (pad != 0)
                     {
-                        imagebuffer[offset++] = 0;
-                        outsize++;
+                        for (int k = 0; k < pad; k++)
+                        {
+                            imagebuffer[offset++] = 0;
+                            outsize++;
+                        }
                     }
+                    j -= width * 2;
+                    pos = 0;
                 }
 
             }
@@ -386,16 +393,20 @@ bool ImportRoutine(int heads_size, std::string directory)
         {
             file_index++;
             int total_size = (width * height);
-            pixel_index = total_size;
+            pixel_index = total_size - (width - 1);
             int rowSize = ((width * 3 + 3) & ~3);
             int pad = rowSize - (width * 3);
             int padded_width = width + pad;
             int offset = (outfile_bitmap_header.bfSize - outfile_bitmap_header.bfOffBits);
+            bool new_row = false;
+            int pos = 0;
             for (int i = 0; i < offset; i += 3) {
-                if (pad != 0 && ((i + pad) % rowSize) == 0)
+                if (pos == width)
                 {
                     i += pad;
-                    if (i >= offset)
+                    new_row = true;
+                    pos = 0;
+                    if (i > offset - (width * 3))
                         break;
                 }
                 const int32_t cur_pixel_r = imagebuffer[outfile_bitmap_header.bfOffBits + i + 0];
@@ -427,13 +438,20 @@ bool ImportRoutine(int heads_size, std::string directory)
                     }
                 }
 
+                if (new_row)
+                {
+                    pixel_index -= width * 2;
+                    new_row = false;
+                }
+
                 if ((it[0].offset + 4 + pixel_index) > heads_size)
                 {
                     printf("Buffer overflow");
                     fclose(in_f);
                     return false;
                 }
-                filebuffer[it[0].offset + 4 + pixel_index--] = palette_entry;
+                filebuffer[it[0].offset + 4 + pixel_index++] = palette_entry;
+                pos++;
             }
         }
         else if (bitDepth == 8)
@@ -444,15 +462,19 @@ bool ImportRoutine(int heads_size, std::string directory)
 
             file_index++;
             int total_size = (width * height);
-            pixel_index = total_size;
+            pixel_index = total_size - (width - 1);
             int rowSize = ((width + 3) & ~3);
             int pad = rowSize - width;
             int padded_width = width + pad;
-            int offset = total_size + (pad * height);
-            for (int i = 0; i < offset; i ++) {
-                if (pad != 0 && ((i + pad) % rowSize) == 0)
+            int offset = (total_size + (pad * height));
+            bool new_row = false;
+            int pos = 0;
+            for (int i = 0; i < offset; i++) {
+                if (pos == width)
                 {
                     i += pad;
+                    new_row = true;
+                    pos = 0;
                     if (i >= offset)
                         break;
                 }
@@ -486,13 +508,19 @@ bool ImportRoutine(int heads_size, std::string directory)
                     }
                 }
 
+                if (new_row)
+                {
+                    pixel_index -= width * 2;
+                    new_row = false;
+                }
                 if ((it[0].offset + 4 + pixel_index) > heads_size)
                 {
                     printf("Buffer overflow");
                     fclose(in_f);
                     return false;
                 }
-                filebuffer[it[0].offset + 4 + pixel_index--] = palette_entry;
+                filebuffer[it[0].offset + 4 + pixel_index++] = palette_entry;
+                pos++;
             }
         }
         fclose(in_f);
@@ -634,6 +662,7 @@ void ImportFiles()
 
 int main(int argc, char* argv[])
 {
+    printf("Ultima Underworld 1 & 2 Portrait Replacer Version 0.2\n");
 
     if (argc > 1)
     {
